@@ -17,7 +17,7 @@ from utils import Logger, Timer, save_model, save_vars, probe_infnan
 import objectives
 import models
 
-runId = datetime.datetime.now().isoformat().replace(':','_')
+# runId = datetime.datetime.now().isoformat().replace(':','_')
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -29,6 +29,8 @@ parser.add_argument('--manifold', type=str, default='PoincareBall', choices=['Eu
 parser.add_argument('--name', type=str, default='Poincare_MNIST', help='experiment name (default: None)')
 parser.add_argument('--save-freq', type=int, default=0, help='print objective values every value (if positive)')
 parser.add_argument('--skip-test', action='store_true', default=False, help='skip test dataset computations')
+parser.add_argument('--inference', default=True, help='self-explanatory')
+parser.add_argument('--runId', default='mnist_2', help='self-explanatory')
 
 ### Dataset
 parser.add_argument('--data-params', nargs='+', default=[], help='parameters which are passed to the dataset loader')
@@ -39,11 +41,11 @@ parser.add_argument('--iwae-samples', type=int, default=5000, help='number of sa
 
 ### Optimisation
 parser.add_argument('--obj', type=str, default='vae', help='objective to minimise (default: vae)')
-parser.add_argument('--epochs', type=int, default=80, metavar='E', help='number of epochs to train (default: 50)')
+parser.add_argument('--epochs', type=int, default=100, metavar='E', help='number of epochs to train (default: 50)')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N', help='batch size for data (default: 64)')
 parser.add_argument('--beta1', type=float, default=0.9, help='first parameter of Adam (default: 0.9)')
 parser.add_argument('--beta2', type=float, default=0.999, help='second parameter of Adam (default: 0.900)')
-parser.add_argument('--lr', type=float, default=1e-4, help='learnign rate for optimser (default: 1e-4)')
+parser.add_argument('--lr', type=float, default=5e-4, help='learnign rate for optimser (default: 1e-4)')
 
 ## Objective
 parser.add_argument('--K', type=int, default=1, metavar='K',  help='number of samples to estimate ELBO (default: 1)')
@@ -82,7 +84,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device("cuda" if args.cuda else "cpu")
 args.prior_iso = args.prior_iso or args.posterior == 'RiemannianNormal'
-
+runId = args.runId
 # Choosing and saving a random seed for reproducibility
 if args.seed == 0: args.seed = int(torch.randint(0, 2**32 - 1, (1,)).item())
 print('seed', args.seed)
@@ -97,9 +99,14 @@ directory_name = '/vol/medic01/users/av2514/Pycharm_projects/Manifolds/pvae-mast
 if args.name != '.':
     if not os.path.exists(directory_name):
         os.makedirs(directory_name)
-    runPath = mkdtemp(prefix=runId, dir=directory_name)
+    # runPath = mkdtemp(prefix=runId, dir=directory_name)
+    runPath = os.path.join(directory_name,runId)
+    if not os.path.exists(runPath):
+        os.makedirs(runPath)
 else:
-    runPath = mkdtemp(prefix=runId, dir=directory_name)
+    # runPath = mkdtemp(prefix=runId, dir=directory_name)
+    runPath = os.path.join(directory_name,args.name,runId)
+
 sys.stdout = Logger('{}/run.log'.format(runPath))
 print('RunID:', runId)
 
@@ -159,6 +166,14 @@ def test(epoch, agg):
     agg['test_mlik'].append(b_mlik / len(test_loader.dataset))
     print('====>             Test loss: {:.4f} mlik: {:.4f}'.format(agg['test_loss'][-1], agg['test_mlik'][-1]))
 
+def embed_in_lorentz(agg):
+    model.eval()
+    with torch.no_grad():
+        for i, (data,labels) in enumerate(test_loader):
+            data = data.to(device)
+            qz_x = model.qz_x(*model.enc(data))
+            embedded = qz_x.rsample(torch.Size([1])).squeeze(0)
+
 
 if __name__ == '__main__':
     with Timer('ME-VAE') as t:
@@ -166,13 +181,17 @@ if __name__ == '__main__':
         print('Starting training...')
 
         model.init_last_layer_bias(train_loader)
-        for epoch in range(1, args.epochs + 1):
-            train(epoch, agg)
-            if args.save_freq == 0 or epoch % args.save_freq == 0:
-                if not args.skip_test: test(epoch, agg)
-                model.generate(runPath, epoch)
-            save_model(model, runPath + '/model.rar')
-            save_vars(agg, runPath + '/losses.rar')
+        if args.inference:
+            model.load_state_dict(torch.load(runPath + '/model.rar'))
+            test(args.epochs, agg)
+        else:
+            for epoch in range(1, args.epochs + 1):
+                train(epoch, agg)
+                if args.save_freq == 0 or epoch % args.save_freq == 0:
+                    if not args.skip_test: test(epoch, agg)
+                    model.generate(runPath, epoch)
+                save_model(model, runPath + '/model.rar')
+                save_vars(agg, runPath + '/losses.rar')
 
         print('p(z) params:')
         print(model.pz_params)
