@@ -304,14 +304,17 @@ def get_in_cone_points(points_to_check, cone_point, t):
 
 
 def compare_images(images_to_compare, gt, method_for_comparison):
-    if method_for_comparison == 'mse':
-        mse = nn.MSELoss(reduction='none')
+    '''
+         Populate with your own fucntion to choose next point, this is where the path through the latent space should be
+         defined
 
-        comparisons = mse(images_to_compare, gt)
-        comparisons = comparisons.mean(axis=[1, 2, 3])
-        indeces = torch.argsort(comparisons)
-        return indeces[0]
-    elif method_for_comparison=='whites':
+        :param images_to_compare:
+        :param gt:
+        :param method_for_comparison:
+        :return indexes to choose :
+        '''
+
+    if method_for_comparison=='whites':
         gold_standard = (gt >= 0.5).sum()
         minimum = 1e10
         arg_min = 0
