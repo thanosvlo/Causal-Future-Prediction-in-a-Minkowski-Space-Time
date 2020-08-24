@@ -49,7 +49,7 @@ class KTHdataset(Dataset):
 
 class SequenceKTHdataset(KTHdataset):
     def __init__(self, path, timesteps, movements='all', scale=0.5, mode ='train'):
-        super().__init__(path)
+        super(SequenceKTHdataset).__init__(path)
         self.timesteps = timesteps
         self.movements = movements
         self.sequences = self.create_sequences(self.dict[mode])
@@ -116,6 +116,6 @@ class SequenceKTHdataset(KTHdataset):
 
 if __name__ == '__main__':
     movements = ['walking', 'handwaving']
-    dataset = SequenceKTHdataset('/vol/medic01/users/lschmidt/KTH_64', 1, movements=movements)
+    dataset = SequenceKTHdataset('../KTH_64', 1, movements=movements)
     for items in dataset:
         print(1)

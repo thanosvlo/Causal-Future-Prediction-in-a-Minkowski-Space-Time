@@ -32,20 +32,18 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('--save-dir', type=str, default='')
 parser.add_argument('--model', type=str, metavar='M', help='model name',default='mnist')
 parser.add_argument('--manifold', type=str, default='PoincareBall', choices=['Euclidean', 'PoincareBall'])
-parser.add_argument('--name', type=str, default='KTH', help='experiment name (default: None)')
+parser.add_argument('--name', type=str, default='PoincareMNIST', help='experiment name (default: None)')
 parser.add_argument('--save-freq', type=int, default=0, help='print objective values every value (if positive)')
 parser.add_argument('--skip-test', action='store_true', default=False, help='skip test dataset computations')
 parser.add_argument('--inference', default=False, help='self-explanatory')
-parser.add_argument('--runId', default='moving_mnist_32x32_18_pixels_dim_10_hidden_10_hdim_400_c05', help='self-explanatory')
+parser.add_argument('--runId', default='moving_mnist', help='self-explanatory')
 
 ### Dataset
 parser.add_argument('--data-params', nargs='+', default=[], help='parameters which are passed to the dataset loader')
 parser.add_argument('--data-size', type=int, nargs='+', default=[], help='size/shape of data observations')
-parser.add_argument('--data_path', default='/vol/medic01/users/av2514/Pycharm_projects/crystal_cone/data', help='self-explanatory')
+parser.add_argument('--data_path', default='', help='self-explanatory')
 parser.add_argument('--data_mode', default='moving_mnist', help='self-explanatory')
-parser.add_argument('--pos_samples', default=4, help='only for infovae (CPC) loss, positive samples')
-parser.add_argument('--neg_samples', default=4, help='only for infovae (CPC) loss, negative samples')
-parser.add_argument('--movements', default=['walking','handwaving'])
+parser.add_argument('--movements', default=['walking','handwaving'], help='Restrict movements in KTH dataset')
 
 ### Metric & Plots
 parser.add_argument('--iwae-samples', type=int, default=5000, help='number of samples to compute marginal log likelihood estimate')
@@ -64,14 +62,14 @@ parser.add_argument('--beta', type=float, default=1.0, metavar='B', help='coeffi
 parser.add_argument('--analytical-kl', action='store_true', default=False, help='analytical kl when possible')
 
 ### Model
-parser.add_argument('--latent-dim', type=int, default=8, metavar='L', help='latent dimensionality (default: 10)')
+parser.add_argument('--latent-dim', type=int, default=10, metavar='L', help='latent dimensionality (default: 10)')
 parser.add_argument('--c', type=float, default=0.7, help='curvature')
 parser.add_argument('--posterior', type=str, default='WrappedNormal', help='posterior distribution',
                     choices=['WrappedNormal', 'RiemannianNormal', 'Normal'])
 
 ## Architecture
 parser.add_argument('--num-hidden-layers', type=int, default=1, metavar='H', help='number of hidden layers in enc and dec (default: 1)')
-parser.add_argument('--hidden-dim', type=int, default=400, help='number of hidden layers dimensions (default: 100)')
+parser.add_argument('--hidden-dim', type=int, default=100, help='number of hidden layers dimensions (default: 100)')
 parser.add_argument('--nl', type=str, default='ReLU', help='non linearity')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
                     choices=['Linear', 'Wrapped', 'Mob', 'Wrapped_Conv'])
@@ -87,7 +85,7 @@ parser.add_argument('--learn-prior-std', action='store_true', default=False)
 
 ### Technical
 parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA use')
-parser.add_argument('--seed', type=int, default=1459897960, metavar='S', help='random seed (default: 1)') # 1459897960 for c = 0.5
+parser.add_argument('--seed', type=int, default=0, metavar='S', help='random seed (default: 1)')
 parser.add_argument('--gpu',default='0')
 
 args = parser.parse_args()
@@ -109,7 +107,7 @@ torch.manual_seed(args.seed)
 torch.backends.cudnn.deterministic = True
 
 # Create directory for experiment if necessary
-directory_name = '/vol/medic01/users/av2514/Pycharm_projects/Manifolds/pvae-master/experiments/{}'.format(args.name)
+directory_name = './experiments/{}'.format(args.name)
 outpath = 'cone_inference'
 
 if args.name != '.':
@@ -145,8 +143,8 @@ if args.data_mode=='mnist':
 elif args.data_mode=='moving_mnist':
     train_loader, test_loader = model.getDataLoaders_moving_mnist(args.batch_size, True, device, args=args, *args.data_params)
 elif args.data_mode=='kth':
-    train_dataset = SequenceKTHdataset('/vol/medic01/users/lschmidt/KTH_64', 1, mode='train',movements=args.movements)
-    test_dataset = SequenceKTHdataset('/vol/medic01/users/lschmidt/KTH_64', 1, mode='test',movements=args.movements)
+    train_dataset = SequenceKTHdataset('../KTH_64', 1, mode='train',movements=args.movements)
+    test_dataset = SequenceKTHdataset('../KTH_64', 1, mode='test',movements=args.movements)
     kwargs = {'num_workers': 1, 'pin_memory': True}
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
@@ -202,109 +200,6 @@ def test(epoch, agg):
 
 def embed_in_lorentz(agg):
 
-
-    model.eval()
-
-    manifold = model.manifold
-
-    with torch.no_grad():
-        for i, (data,labels) in enumerate(test_loader):
-            data = data.to(device)
-            t = 2
-            cone_index = []
-            points =[]
-            data_x = []
-            sampling = 'informed'
-            outpath = 'single_cone'
-            if not os.path.exists(os.path.join(runPath,outpath)):
-                os.makedirs(os.path.join(runPath,outpath))
-
-            for ll in range(data.shape[0]):
-                qz_x = model.qz_x(*model.enc(data[ll]))
-                embedded = qz_x.rsample(torch.Size([1])).squeeze(0)
-                lorentz_point = manifold.from_poincare_ball_to_lorentz(embedded)
-
-                print(ll)
-                samples_return, cone_idx_return = find_point_in_cone(model, lorentz_point, sampling=sampling, t=t)
-
-
-                if len(samples_return)>0:
-                    for _ in range(len(samples_return)):
-                        data_x.append(data)
-                    points.append(samples_return)
-                    cone_index.append(cone_index)
-
-
-            new_points = torch.stack(points).view(len(points), -1)
-            data_xs = torch.stack(data_x)
-            cone_index = torch.stack(cone_index)
-
-            new_qz_x = manifold.to_poincare_ball_from_lorentz(new_points)
-            new_qz_x.to(device)
-            reconstructed = get_mean_param(model.dec(new_qz_x.squeeze(0)))
-            rand_indexes = np.random.randint(0, new_points.shape[0], 8)
-            flows = calc_flow(data_xs[rand_indexes], reconstructed[rand_indexes])
-            flows = flows.to(device)
-            comp = torch.cat([data_xs[rand_indexes].repeat(1,3,1,1), reconstructed[rand_indexes].repeat(1,3,1,1),flows])
-            save_image(comp.data.cpu(), '{}/{}/lorentzian_{}.png'.format(runPath, outpath,i))
-
-def embed_in_lorentz_2(agg):
-
-
-    model.eval()
-
-    manifold = model.manifold
-
-    with torch.no_grad():
-        for i, (data_tot,labels) in enumerate(test_loader):
-            data_tot = data_tot.to(device)
-            t = 20
-            sampling ='random'
-            cone_index = []
-            points = []
-            data_x = []
-            outpath = 'single_cone_{}_sampling_{}_t'.format(sampling,t)
-            if not os.path.exists(os.path.join(runPath,outpath)):
-                os.makedirs(os.path.join(runPath,outpath))
-            for ll in range(data_tot.shape[0]):
-
-                data = data_tot[ll,...]
-                qz_x = model.qz_x(*model.enc(data))
-                embedded = qz_x.rsample(torch.Size([1])).squeeze(0)
-                lorentz_point = manifold.from_poincare_ball_to_lorentz(embedded)
-
-                print(ll)
-                samples_return, cone_idx_return = find_point_in_cone(model, lorentz_point, sampling=sampling, t=t,
-                                                                     qz_x=qz_x)
-
-
-                if len(samples_return)>0:
-                    for oo, ff in enumerate(samples_return):
-                        data_x.append(data)
-                        points.append(ff.view(-1, ff.shape[1]))
-                        cone_index.append(cone_idx_return[oo].view([-1,1]))
-
-
-            new_points = torch.stack(points).view(len(points),-1)
-            data_xs = torch.stack(data_x)
-            cone_index = torch.stack(cone_index)
-            rand_indexes = np.random.randint(0, new_points.shape[0], 8)
-
-            new_qz_x = manifold.to_poincare_ball_from_lorentz(new_points[rand_indexes])
-            new_qz_x.to(device)
-            reconstructed = get_mean_param(model.dec(new_qz_x.squeeze(0)))
-
-            flows = calc_flow(data_xs[rand_indexes], reconstructed)
-            flows = flows.to(device)
-            comp = torch.cat([data_xs[rand_indexes].repeat(1,3,1,1), reconstructed.repeat(1,3,1,1),flows])
-            # save_image(comp.data.cpu(), '{}/{}/lorentzian_{}.png'.format(runPath, outpath,i))
-            del new_points
-            del data_xs
-            del cone_index
-            torch.cuda.empty_cache()
-
-def embed_in_lorentz_3(agg):
-
     model.eval()
 
     with torch.no_grad():
@@ -313,7 +208,7 @@ def embed_in_lorentz_3(agg):
             t = 2
             data_x = []
             cones_to_intersect = 5
-            comparison = 'whites'
+            comparison = 'whites'  # method to choose, naively count the white pixels
             sampling_og = 'random'
 
             outpath = 'intersecting_{}_cones_comparison_{}_sampling_{}'.format(cones_to_intersect, comparison,
@@ -335,9 +230,7 @@ def embed_in_lorentz_3(agg):
                            '{}/{}/lorentzian_i_{}_ll_{}_cones_{}.png'.format(runPath, outpath, i, ll, cones_to_intersect))
             torch.cuda.empty_cache()
 
-            # rand_indexes = np.random.randint(0, len(data_x), 1)
-            # comp = data_x[rand_indexes]
-            # save_image(comp.data.cpu(), '{}/{}/lorentzian_{}.png'.format(runPath, outpath,i))
+
 
 
 if __name__ == '__main__':
@@ -349,8 +242,8 @@ if __name__ == '__main__':
         if args.inference:
             print('Starting Testing...')
             model.load_state_dict(torch.load(runPath + '/model.rar'))
-            # test(args.epochs, agg)
-            embed_in_lorentz_3(agg)
+            test(args.epochs, agg)
+            embed_in_lorentz(agg)
         else:
             print('Starting Training...')
 

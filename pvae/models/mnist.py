@@ -48,8 +48,6 @@ class Mnist(VAE):
             p = torch.zeros(prod(data_size[1:]), device=self._pz_mu.device)
             N = 0
             for i, (data, _) in enumerate(train_loader):
-                if 'info' in self.params.obj:
-                    data = data[:,0,...]
                 data = data.to(self._pz_mu.device)
                 B = data.size(0)
                 N += B
@@ -93,10 +91,7 @@ class Mnist(VAE):
         if 'npz' in os.path.basename(label_filename):
             labels = labels['arr_0']
             labels = labels[:,0]
-        if 'info' in self.params.obj and not flag:
-            true_labels = np.array([labels[i:i + 30] for i in range(0, len(labels), 30)])
-            labels = np.array([np.concatenate((np.ones(self.params.pos_samples), np.zeros(self.params.neg_samples)),
-                                              axis=0) for i in range(true_labels.shape[0])])
+
         if 'only' in self.params.runId:
             lbls_to_get = self.params.runId.split('_')
             lbl_1 = int(lbls_to_get[-1])
@@ -123,18 +118,8 @@ class Mnist(VAE):
         if 'only' in self.params.runId:
             data = data[temp_indx]
 
-        if 'info' in self.params.obj and not flag:
-            data = np.array([data[i:i + 30] for i in range(0, len(data), 30)])
-            _data = []
-            for i in range(data.shape[0]):
-                rnd_num = np.random.randint(0, 30 - max(self.params.pos_samples, self.params.neg_samples))
-                temp_positives = data[i, rnd_num:rnd_num+self.params.pos_samples, ...]
-                j = self._get_random_number(i,true_labels,data.shape[0])
-                temp_negatives = data[j,rnd_num:rnd_num+self.params.neg_samples,...]
-                _data.append(np.concatenate([temp_positives,temp_negatives], axis=0))
-            data = torch.Tensor(_data)
-        else:
-            data = torch.Tensor(data)
+
+        data = torch.Tensor(data)
 
 
         return data, labels

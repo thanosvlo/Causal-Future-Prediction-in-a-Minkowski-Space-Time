@@ -188,7 +188,6 @@ class DecWrapped_Conv(nn.Module):
         modules = []
         modules.append(nn.Sequential(nn.Conv2d(manifold.coord_dim, hidden_dim, 3, 1, 1), non_lin))
         modules.extend([extra_hidden_layer_conv(hidden_dim, non_lin) for _ in range(num_hidden_layers - 1)])
-        # modules.extend(nn.Sequential(nn.Flatten(), non_lin))
         self.dec = nn.Sequential(*modules)
         self.fc31 = nn.Linear(hidden_dim, prod(data_size))
 

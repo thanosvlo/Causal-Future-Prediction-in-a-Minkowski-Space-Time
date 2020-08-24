@@ -179,37 +179,6 @@ def has_analytic_kl(type_p, type_q):
     return (type_p, type_q) in torch.distributions.kl._KL_REGISTRY
 
 
-def calc_flow(orig, recon):
-    import cv2
-    import numpy as np
-    flows = []
-    for i in range(len(orig)):
-        frame_1 = orig[i]
-        frame_2 = recon[i]
-        frame_1 = frame_1.cpu().numpy()
-        frame_2 = frame_2.cpu().numpy()
-        frame_1 = np.transpose(frame_1, [1, 2, 0]) * 255.
-        frame_2 = np.transpose(frame_2, [1, 2, 0]) * 255.
-
-        hsv = np.zeros((frame_1.shape[0], frame_1.shape[1], 3))
-        hsv[..., 1] = 255
-
-        flow = cv2.calcOpticalFlowFarneback(frame_1, frame_2, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-        hsv[..., 0] = ang * 180 / np.pi / 2
-        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-        hsv = np.float32(hsv)
-        rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        rgb = np.transpose(rgb, [2, 0, 1])
-        flows.append(rgb)
-
-    flows = torch.Tensor(flows)
-    return flows
-
-    # cv2.imwrite('{}/frame_1.png'.format(runPath),frame_1)
-    # cv2.imwrite('{}/frame_2.png'.format(runPath),frame_2)
-    # cv2.imwrite('{}/flow.png'.format(runPath),rgb)
-
 
 def find_point_in_cone(model, initial_point, sampling='random', t=2, **kwargs):
     # assumes lorentzian point as input
@@ -262,7 +231,7 @@ def find_interescting_cones(model, initial_point, sampling='random', t=2, **kwar
     # assumes images as inputs
 
     lorentz_points_to_keep = []
-    method_for_comparison = kwargs.get('comparison', 'mse')
+    method_for_comparison = kwargs.get('comparison', 'whites')
 
     for i in range(cones_to_intersect):
         qz_x = model.qz_x(*model.enc(initial_point))
@@ -280,6 +249,7 @@ def find_interescting_cones(model, initial_point, sampling='random', t=2, **kwar
         new_points = torch.stack(samples_return).view(len(samples_return), -1)
 
         for time_dif, cone_points in enumerate(lorentz_points_to_keep):
+            # give slack due to failing theoretical assumption of perfect knowledge
             new_points = get_in_cone_points(new_points, cone_points, t * (1 + time_dif))
 
         #failsafe switch
