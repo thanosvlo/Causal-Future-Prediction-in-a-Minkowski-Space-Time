@@ -22,6 +22,9 @@ This part of the algorithm depends on the target application, see paper for deta
 Given a "count all the white pixels" naive method. 
 >compare_images @ utils.py 
 
+## Blog Post
+Check out our [blog post](https://thanosvlo.github.io/thanosvlo.github.io/post/getting-started/) for a summary of the paper. 
+
  
  ## Citation
 ````
